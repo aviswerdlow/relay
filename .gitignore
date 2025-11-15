@@ -1,0 +1,27 @@
+# Node dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+
+# SvelteKit
+apps/web/.svelte-kit/
+apps/web/build/
+
+# Convex generated code
+convex/.deployment/
+convex/_generated/
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# IDE/editor
+.vscode/
+.idea/
+.DS_Store
+.vercel

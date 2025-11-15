@@ -1,0 +1,22 @@
+{
+  "name": "convex",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "convex dev",
+    "typecheck": "tsc --project tsconfig.json",
+    "lint": "echo \"No lint step for Convex yet\"",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@relay/types": "workspace:*",
+    "convex": "^1.28.2",
+    "js-sha256": "^0.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.4"
+  }
+}

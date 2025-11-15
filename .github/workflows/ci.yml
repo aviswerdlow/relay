@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+      - name: Unit tests
+        run: pnpm test
+      - name: Build web app
+        run: pnpm --filter web run build
+      - name: Start preview server
+        run: pnpm --filter web run preview -- --host 0.0.0.0 --port 4173 &
+      - name: Wait for server
+        run: npx wait-on http://127.0.0.1:4173
+      - name: Playwright tests
+        run: pnpm test:e2e
+        env:
+          CI: true

@@ -1,0 +1,21 @@
+{
+  "name": "relay",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@10.15.0",
+  "scripts": {
+    "dev": "pnpm --filter web run dev",
+    "dev:web": "pnpm --filter web run dev",
+    "dev:convex": "pnpm --filter convex run dev",
+    "typecheck": "pnpm --filter web run check && pnpm --filter convex run typecheck && pnpm --filter @relay/types run typecheck",
+    "lint": "pnpm --recursive --if-present lint",
+    "format": "pnpm --recursive --if-present format",
+    "test": "pnpm --recursive --if-present test",
+    "test:e2e": "playwright test",
+    "test:ci": "pnpm test && pnpm test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "convex": "^1.28.2"
+  }
+}
