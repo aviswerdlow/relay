@@ -153,6 +153,34 @@ export const internalRemoveTokens = internalMutation({
   }
 });
 
+export const internalUpdateAccessToken = internalMutation({
+  args: {
+    userId: v.string(),
+    accessTokenEnc: v.string(),
+    expiry: v.number()
+  },
+  handler: async (ctx, args) => {
+    const userId = ctx.db.normalizeId('users', args.userId);
+    if (!userId) {
+      throw new Error('User not found for token refresh');
+    }
+
+    const tokenDoc = await ctx.db
+      .query('oauth_tokens')
+      .withIndex('by_user', (q) => q.eq('userId', userId))
+      .unique();
+    if (!tokenDoc) {
+      throw new Error('OAuth tokens missing for user refresh');
+    }
+
+    await ctx.db.patch(tokenDoc._id, {
+      accessTokenEnc: args.accessTokenEnc,
+      expiry: args.expiry,
+      updatedAt: Date.now()
+    });
+  }
+});
+
 export const internalClearSessions = internalMutation({
   args: {
     userId: v.string()
