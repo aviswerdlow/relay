@@ -81,7 +81,7 @@ export const startScan = action({
     let abortedByBudget = false;
 
     try {
-      const messages = await listNewsletterCandidates(accessToken, query).catch(async (err) => {
+      const messages = await listNewsletterCandidates(accessToken, query, runId).catch(async (err) => {
         await logRunError(ctx, runId, 'gmail_list_failed', formatErrorMessage(err), { query });
         throw err;
       });
@@ -301,7 +301,7 @@ async function refreshGoogleAccessToken(refreshToken: string): Promise<{ accessT
   };
 }
 
-async function listNewsletterCandidates(accessToken: string, query: string) {
+async function listNewsletterCandidates(accessToken: string, query: string, runId: string) {
   const messages: { id: string; threadId: string }[] = [];
   let pageToken: string | undefined;
 
@@ -333,6 +333,13 @@ async function listNewsletterCandidates(accessToken: string, query: string) {
     if (json.messages) {
       messages.push(...json.messages);
     }
+
+    console.log('scan:gmail_page', {
+      runId,
+      fetched: json.messages?.length ?? 0,
+      totalSoFar: messages.length,
+      nextPageToken: json.nextPageToken ?? null
+    });
 
     if (!json.nextPageToken) {
       break;

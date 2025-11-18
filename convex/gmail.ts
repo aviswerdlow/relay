@@ -25,8 +25,8 @@ const BODY_CONFIRMATIONS: Record<Exclude<NewsletterPlatform, 'unknown'>, RegExp[
 
 export function buildNewsletterQuery(timeWindowDays: number): string {
   const boundedDays = Math.max(1, Math.min(365, Math.floor(timeWindowDays)));
-  // Keep scope narrow: recent mail, must contain links, exclude chats.
-  return [`newer_than:${boundedDays}d`, 'has:link', '-is:chat'].join(' ');
+  // Keep scope narrow but do not require links to maximize coverage.
+  return [`newer_than:${boundedDays}d`, '-is:chat'].join(' ');
 }
 
 export function classifyNewsletterFromMetadata(metadata: Pick<EmailMetadata, 'from' | 'listId' | 'subject'>): NewsletterPlatform {
