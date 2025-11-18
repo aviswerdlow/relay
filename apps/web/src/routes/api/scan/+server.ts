@@ -46,13 +46,23 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 
 	try {
 		const progress = await getScanProgressViaConvex(runId);
+		const summary = {
+			status: progress.status,
+			totalMessages: progress.totalMessages,
+			processedMessages: progress.processedMessages,
+			newslettersClassified: progress.newslettersClassified,
+			processedCompanies: progress.processedCompanies,
+			costUsd: progress.costUsd,
+			errorCount: progress.errorCount,
+			notes: progress.notes.length,
+			failureReason: progress.failureReason
+		};
 
 		if (!includeEmails) {
 			console.log('[api/scan] progress fetched', {
 				userId,
 				runId,
-				processed: progress.processedMessages,
-				classified: progress.newslettersClassified
+				...summary
 			});
 			return json({ progress });
 		}
@@ -61,7 +71,9 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 		console.log('[api/scan] progress + emails fetched', {
 			userId,
 			runId,
-			emailCount: emails.metadata.length
+			metadataCount: emails.metadata.length,
+			bodyCount: emails.bodies.length,
+			...summary
 		});
 		return json({ progress, emails });
 	} catch (error) {
