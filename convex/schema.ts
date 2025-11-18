@@ -36,6 +36,16 @@ export default defineSchema({
     processedMessages: v.number(),
     processedCompanies: v.number(),
     newslettersClassified: v.number(),
+    costUsd: v.number(),
+    errorCount: v.number(),
+    notes: v.array(
+      v.object({
+        at: v.number(),
+        code: v.string(),
+        message: v.optional(v.string()),
+        context: v.optional(v.string())
+      })
+    ),
     startedAt: v.number(),
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),
@@ -66,6 +76,7 @@ export default defineSchema({
     normalizedAt: v.number(),
     retentionExpiry: v.number()
   })
+    .index('by_email', ['emailId'])
     .index('by_run', ['runId'])
     .index('by_retention', ['retentionExpiry']),
 

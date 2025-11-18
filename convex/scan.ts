@@ -26,6 +26,10 @@ export const getScanProgress = query({
       processedMessages: run.processedMessages,
       processedCompanies: run.processedCompanies,
       newslettersClassified: run.newslettersClassified,
+      costUsd: run.costUsd ?? 0,
+      errorCount: run.errorCount ?? 0,
+      recentErrors: Array.isArray(run.notes) ? run.notes.slice(-5) : [],
+      failureReason: run.failureReason ?? undefined,
       lastUpdatedAt: run.updatedAt
     };
   }
@@ -96,6 +100,9 @@ export const internalCreateRun = internalMutation({
       processedMessages: 0,
       processedCompanies: 0,
       newslettersClassified: 0,
+      costUsd: 0,
+      errorCount: 0,
+      notes: [],
       startedAt: now,
       updatedAt: now,
       completedAt: undefined,
@@ -129,7 +136,8 @@ export const internalUpdateRunProgress = internalMutation({
     runId: v.string(),
     processedMessages: v.number(),
     newslettersClassified: v.number(),
-    processedCompanies: v.optional(v.number())
+    processedCompanies: v.optional(v.number()),
+    costUsd: v.optional(v.number())
   },
   handler: async (ctx, args) => {
     const runId = ctx.db.normalizeId('runs', args.runId);
@@ -141,6 +149,7 @@ export const internalUpdateRunProgress = internalMutation({
       processedMessages: args.processedMessages,
       newslettersClassified: args.newslettersClassified,
       processedCompanies: typeof args.processedCompanies === 'number' ? args.processedCompanies : undefined,
+      costUsd: typeof args.costUsd === 'number' ? args.costUsd : undefined,
       updatedAt: Date.now()
     });
   }
@@ -189,6 +198,45 @@ export const internalMarkRunFailed = internalMutation({
       failureReason: args.reason,
       completedAt: now,
       updatedAt: now
+    });
+  }
+});
+
+export const internalLogRunNote = internalMutation({
+  args: {
+    runId: v.string(),
+    code: v.string(),
+    message: v.optional(v.string()),
+    context: v.optional(v.string())
+  },
+  handler: async (ctx, args) => {
+    const runId = ctx.db.normalizeId('runs', args.runId);
+    if (!runId) {
+      throw new Error(RUN_NOT_FOUND);
+    }
+
+    const run = await ctx.db.get(runId);
+    if (!run) {
+      throw new Error(RUN_NOT_FOUND);
+    }
+
+    const entry = {
+      at: Date.now(),
+      code: args.code,
+      message: args.message ?? undefined,
+      context: args.context ?? undefined
+    };
+
+    const notes = Array.isArray(run.notes) ? [...run.notes, entry] : [entry];
+    const MAX_NOTES = 20;
+    while (notes.length > MAX_NOTES) {
+      notes.shift();
+    }
+
+    await ctx.db.patch(runId, {
+      notes,
+      errorCount: (run.errorCount ?? 0) + 1,
+      updatedAt: Date.now()
     });
   }
 });
@@ -261,7 +309,7 @@ export const internalStoreEmailBody = internalMutation({
 
     const existing = await ctx.db
       .query('email_bodies')
-      .filter((q) => q.eq(q.field('emailId'), emailId))
+      .withIndex('by_email', (q) => q.eq('emailId', emailId))
       .unique();
 
     const doc = {
