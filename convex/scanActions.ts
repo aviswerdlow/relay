@@ -297,12 +297,25 @@ export const debugListGmail = action({
 
     const sampleIds = (json.messages ?? []).slice(0, Math.min(5, json.messages?.length ?? 0));
     const sampleMetadata: Array<Record<string, unknown>> = [];
+    const sampleFullBodies: Array<{ gmailId: string; headers: Record<string, string>; snippet?: string }> = [];
     for (const message of sampleIds) {
       try {
         const meta = await fetchMessageMetadata(accessToken, message.id);
         sampleMetadata.push(meta);
+        try {
+          const full = await fetchFullMessage(accessToken, message.id);
+          const headers = indexHeaders(full.payload.headers ?? []);
+          sampleFullBodies.push({
+            gmailId: message.id,
+            headers,
+            snippet: full.snippet
+          });
+        } catch (error) {
+          sampleFullBodies.push({ gmailId: message.id, headers: {}, snippet: formatErrorMessage(error) });
+        }
       } catch (error) {
         sampleMetadata.push({ id: message.id, error: formatErrorMessage(error) });
+        sampleFullBodies.push({ gmailId: message.id, headers: {}, snippet: formatErrorMessage(error) });
       }
     }
 
@@ -322,7 +335,8 @@ export const debugListGmail = action({
       fetched: json.messages?.length ?? 0,
       resultSizeEstimate: json.resultSizeEstimate ?? null,
       nextPageToken: json.nextPageToken ?? null,
-      sample: sampleMetadata
+      sample: sampleMetadata,
+      sampleFull: sampleFullBodies
     };
   }
 });
