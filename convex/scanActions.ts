@@ -243,6 +243,90 @@ export const startScan = action({
   }
 });
 
+export const debugListGmail = action({
+  args: {
+    userId: v.string(),
+    timeWindowDays: v.optional(v.number()),
+    maxResults: v.optional(v.number())
+  },
+  handler: async (ctx, args) => {
+    const user = (await ctx.runQuery(internal.auth.internalGetUser, { userId: args.userId })) as {
+      _id: { toString(): string };
+      settings: { timeWindowDays: number; retentionDays: number };
+    } | null;
+    if (!user) {
+      throw new Error('User not found for debug list');
+    }
+
+    const settings = user.settings ?? defaultUserSettings();
+    const userId = user._id.toString();
+    const timeWindowDays = args.timeWindowDays ?? settings.timeWindowDays ?? 90;
+    const tokens = await ctx.runQuery(internal.auth.internalGetTokensForUser, { userId });
+    if (!tokens) {
+      throw new Error('No Google OAuth tokens available for user');
+    }
+
+    const encryptionKey = deriveAesKey(getRequiredEnvVar('TOKEN_ENCRYPTION_SECRET'));
+    const runId = `debug-${Date.now()}`;
+    const accessToken = await ensureFreshAccessToken(ctx, runId, userId, tokens, encryptionKey);
+    const query = buildNewsletterQuery(timeWindowDays);
+    const maxResults = Math.min(Math.max(1, args.maxResults ?? 20), 500);
+
+    const params = new URLSearchParams({
+      q: query,
+      maxResults: String(maxResults),
+      includeSpamTrash: 'false'
+    });
+
+    const response = await fetch(`${GMAIL_API_BASE}?${params.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Gmail debug list failed (${response.status}): ${text}`);
+    }
+
+    const json = (await response.json()) as {
+      messages?: { id: string; threadId: string }[];
+      nextPageToken?: string;
+      resultSizeEstimate?: number;
+    };
+
+    const sampleIds = (json.messages ?? []).slice(0, Math.min(5, json.messages?.length ?? 0));
+    const sampleMetadata: Array<Record<string, unknown>> = [];
+    for (const message of sampleIds) {
+      try {
+        const meta = await fetchMessageMetadata(accessToken, message.id);
+        sampleMetadata.push(meta);
+      } catch (error) {
+        sampleMetadata.push({ id: message.id, error: formatErrorMessage(error) });
+      }
+    }
+
+    console.log('scan:debug_gmail_summary', {
+      runId,
+      userId,
+      query,
+      requested: maxResults,
+      fetched: json.messages?.length ?? 0,
+      resultSizeEstimate: json.resultSizeEstimate ?? null,
+      sampleIds: sampleIds.map((m) => m.id)
+    });
+
+    return {
+      query,
+      requested: maxResults,
+      fetched: json.messages?.length ?? 0,
+      resultSizeEstimate: json.resultSizeEstimate ?? null,
+      nextPageToken: json.nextPageToken ?? null,
+      sample: sampleMetadata
+    };
+  }
+});
+
 async function ensureFreshAccessToken(
   ctx: any,
   runId: string,
