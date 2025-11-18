@@ -54,7 +54,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 			processedCompanies: progress.processedCompanies,
 			costUsd: progress.costUsd,
 			errorCount: progress.errorCount,
-			notes: progress.notes.length,
+			recentErrors: (progress.recentErrors ?? []).length,
 			failureReason: progress.failureReason
 		};
 
