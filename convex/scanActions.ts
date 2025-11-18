@@ -86,6 +86,9 @@ export const startScan = action({
         throw err;
       });
       console.log('scan:messages_listed', { runId, count: messages.length, query });
+      if (messages.length === 0) {
+        console.log('scan:no_candidates_found', { runId, userId, timeWindowDays, query });
+      }
       await ctx.runMutation(internal.scan.internalUpdateRunTotals, { runId, totalMessages: messages.length });
 
       const retentionMs = settings.retentionDays * 24 * 60 * 60 * 1000;
