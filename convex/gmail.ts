@@ -26,7 +26,10 @@ const BODY_CONFIRMATIONS: Record<Exclude<NewsletterPlatform, 'unknown'>, RegExp[
 export function buildNewsletterQuery(timeWindowDays: number): string {
   const boundedDays = Math.max(1, Math.min(365, Math.floor(timeWindowDays)));
   // Keep scope narrow but do not require links to maximize coverage.
-  return [`newer_than:${boundedDays}d`, '-is:chat'].join(' ');
+  const senderFilters = ['substack.com', 'substackmail.com', 'beehiiv.com', 'buttondown.email']
+    .map((domain) => `from:${domain}`)
+    .join(' OR ');
+  return [`newer_than:${boundedDays}d`, '-is:chat', `(${senderFilters})`].join(' ');
 }
 
 export function classifyNewsletterFromMetadata(metadata: Pick<EmailMetadata, 'from' | 'listId' | 'subject'>): NewsletterPlatform {
