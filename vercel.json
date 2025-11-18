@@ -1,6 +1,6 @@
 {
   "framework": "sveltekit",
   "installCommand": "pnpm install",
-  "buildCommand": "pnpm run build",
+  "buildCommand": "pnpm --filter web run build && rm -rf .vercel/output && mkdir -p .vercel && cp -R apps/web/.vercel/output .vercel/output",
   "outputDirectory": ".vercel/output"
 }
