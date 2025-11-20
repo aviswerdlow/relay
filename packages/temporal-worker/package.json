@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/worker.ts",
+    "build": "tsc --outDir dist",
+    "start": "node dist/worker.js",
+    "health": "tsx src/healthcheck.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
