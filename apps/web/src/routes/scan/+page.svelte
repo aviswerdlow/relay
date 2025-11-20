@@ -25,6 +25,7 @@
 	};
 
 	let runId: string | null = null;
+	let workflowId: string | null = null;
 	let progress: Progress | null = null;
 	let error: string | null = null;
 	let pollingHandle: ReturnType<typeof setTimeout> | null = null;
@@ -56,6 +57,7 @@
 
 			const body = await res.json();
 			runId = body.runId;
+			workflowId = body.workflowId ?? null;
 			schedulePoll();
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Unknown error';
@@ -124,6 +126,9 @@
 		</button>
 		{#if runId}
 			<p class="run-id">Run ID: {runId}</p>
+			{#if workflowId}
+				<p class="run-id">Workflow ID: {workflowId}</p>
+			{/if}
 		{/if}
 	</div>
 
