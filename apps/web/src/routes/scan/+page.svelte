@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import type { PageData } from './$types';
 
 	export let data: PageData;
@@ -27,6 +27,20 @@
 	let runId: string | null = null;
 	let workflowId: string | null = null;
 	let progress: Progress | null = null;
+	let recentRuns: Array<{
+		runId: string;
+		status: string;
+		totalMessages: number;
+		processedMessages: number;
+		newslettersClassified: number;
+		processedCompanies: number;
+		costUsd: number;
+		errorCount: number;
+		failureReason: string | null;
+		updatedAt: number;
+		startedAt: number;
+		completedAt: number | null;
+	}> = [];
 	let error: string | null = null;
 	let pollingHandle: ReturnType<typeof setTimeout> | null = null;
 	let isLoading = false;
@@ -109,6 +123,26 @@
 	function formatTime(timestamp: number) {
 		return new Date(timestamp).toLocaleTimeString();
 	}
+
+	async function fetchRuns() {
+		try {
+			const res = await fetch('/api/runs?limit=10');
+			if (!res.ok) {
+				const body = await res.json().catch(() => ({}));
+				throw new Error(body.error ?? 'Failed to fetch runs');
+			}
+			const body = await res.json();
+			recentRuns = body.runs ?? [];
+		} catch (err) {
+			console.error('[scan] failed to load recent runs', err);
+		}
+	}
+
+	onMount(() => {
+		if (!recentRuns.length) {
+			fetchRuns();
+		}
+	});
 </script>
 
 <section class="scan">
@@ -135,6 +169,45 @@
 	{#if error}
 		<p class="error">{error}</p>
 	{/if}
+
+	<section class="history">
+		<div class="history-header">
+			<h2>Recent Runs</h2>
+			<button class="secondary" on:click={fetchRuns}>Refresh</button>
+		</div>
+		{#if recentRuns.length === 0}
+			<p class="muted">No recent runs yet.</p>
+		{:else}
+			<table class="runs-table">
+				<thead>
+					<tr>
+						<th>Run</th>
+						<th>Status</th>
+						<th>Processed</th>
+						<th>Companies</th>
+						<th>Errors</th>
+						<th>Cost</th>
+						<th>Updated</th>
+						<th>Failure</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each recentRuns as run}
+						<tr>
+							<td class="mono">{run.runId}</td>
+							<td><span class="status-badge {run.status}">{run.status}</span></td>
+							<td>{run.processedMessages}/{run.totalMessages}</td>
+							<td>{run.processedCompanies}</td>
+							<td>{run.errorCount}</td>
+							<td>{formatCost(run.costUsd)}</td>
+							<td>{formatTime(run.updatedAt)}</td>
+							<td>{run.failureReason ?? '-'}</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		{/if}
+	</section>
 
 	{#if progress}
 		<section class="status">

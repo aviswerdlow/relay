@@ -210,6 +210,8 @@ Connect Gmail → scan Substack/Beehiiv/Buttondown newsletters from the last 90 
 
 * Basic error console for failed emails (reason codes).
 
+* Temporal workflows: monitor `startScanWorkflow` executions; surface workflowId alongside runId in UI and logs; provide worker healthcheck; alert on failed/stuck workflows.
+
 ---
 
 ### **3.2 Non‑Functional Requirements**
@@ -859,4 +861,3 @@ Siply,https://siply.app,"AI-powered meal planner that auto-builds grocery carts.
 ---
 
 This PRD is sufficient to start building. If you want, I can draft the minimal Convex function stubs and the SvelteKit page skeletons next, plus the exact OpenAI prompt templates and the Gmail q builder.
-

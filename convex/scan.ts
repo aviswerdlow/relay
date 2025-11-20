@@ -3,6 +3,39 @@ import { internalMutation, internalQuery, query } from './_generated/server';
 import { v } from 'convex/values';
 
 const RUN_NOT_FOUND = 'Run not found';
+const RUN_LIST_LIMIT = 50;
+
+export const listRunsForUser = query({
+  args: {
+    userId: v.string(),
+    limit: v.optional(v.number())
+  },
+  handler: async (ctx, args) => {
+    const userId = ctx.db.normalizeId('users', args.userId);
+    if (!userId) {
+      return [];
+    }
+    const limit = Math.min(Math.max(1, args.limit ?? 10), RUN_LIST_LIMIT);
+    const runs = await ctx.db.query('runs').withIndex('by_user', (q) => q.eq('userId', userId)).collect();
+    return runs
+      .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+      .slice(0, limit)
+      .map((run) => ({
+        runId: run._id.toString(),
+        status: run.status,
+        totalMessages: run.totalMessages,
+        processedMessages: run.processedMessages,
+        processedCompanies: run.processedCompanies,
+        newslettersClassified: run.newslettersClassified,
+        costUsd: run.costUsd ?? 0,
+        errorCount: run.errorCount ?? 0,
+        failureReason: run.failureReason ?? null,
+        updatedAt: run.updatedAt,
+        startedAt: run.startedAt,
+        completedAt: run.completedAt ?? null
+      }));
+  }
+});
 
 export const getScanProgress = query({
   args: {

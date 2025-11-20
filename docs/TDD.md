@@ -72,7 +72,7 @@
 
   * /auth/google/callback (exchange code → Convex action)
 
-  * /scan (start scan \+ progress view)
+  * /scan (start scan \+ progress view; show workflowId for observability)
 
   * /results (list \+ filters \+ keyboard review)
 

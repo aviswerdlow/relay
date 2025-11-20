@@ -77,6 +77,28 @@ export async function listEmailsForRunViaConvex(
 	return callQuery<{ metadata: EmailMetadata[]; bodies: EmailBody[] }>('scan:listEmailsForRun', { runId });
 }
 
+export async function listRunsViaConvex(
+	userId: string,
+	limit = 10
+): Promise<
+	Array<{
+		runId: string;
+		status: string;
+		totalMessages: number;
+		processedMessages: number;
+		processedCompanies: number;
+		newslettersClassified: number;
+		costUsd: number;
+		errorCount: number;
+		failureReason: string | null;
+		updatedAt: number;
+		startedAt: number;
+		completedAt: number | null;
+	}>
+> {
+	return callQuery('scan:listRunsForUser', { userId, limit });
+}
+
 export async function listCompaniesViaConvex(
 	userId: string,
 	params: { decision?: string; runId?: string; categories?: string[]; stages?: string[]; platforms?: string[] } = {}
