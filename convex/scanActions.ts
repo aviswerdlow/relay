@@ -13,21 +13,29 @@ import {
   internalUpdateRunTotals
 } from './scan';
 import { deriveAesKey, decryptSecret, encryptSecret } from './crypto';
-import { buildNewsletterQuery, classifyNewsletterFromMetadata, refinePlatformWithBody } from './gmail';
-import { normalizeMessageBody } from './nlp';
+import { buildNewsletterQuery } from './gmail';
 import { assertRequiredScopes, getRequiredEnvVar } from './util';
 import { extractCompaniesSchema } from './extractionSchema';
 import { fetchLinkMetadata } from './linkFetcher';
 import { domainFromUrl, internalUpsertCompany, internalUpsertLinkMetadata } from './companies';
 import { internal } from './_generated/api';
+import { runScanPipeline } from './scanPipeline';
 
 const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me/messages';
 const MAX_MESSAGES = 200;
 const MAX_LINK_SNAPSHOTS = 2;
 const OPENAI_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_MODEL = process.env.OPENAI_MODEL ?? 'gpt-4o-mini-2024-07-18';
-const SYSTEM_PROMPT =
-  'You extract mentions of NEW CONSUMER COMPANIES from newsletter text and optional landing pages. Do not invent companies. Exclude sponsored or public companies. Always include 1-2 evidence snippets.';
+const SYSTEM_PROMPT = [
+  'You are an obsessive consumer venture capitalist combing through newsletters.',
+  'Read the ENTIRE email carefully (headers, intros, body, footers) and extract every NEW CONSUMER COMPANY worth investigating.',
+  'Do not hallucinate. If no new startup is mentioned, return an empty list.',
+  'Focus on consumer products/services (b2c, creator tools, social, marketplaces, commerce, consumer AI, etc.).',
+  'Ignore press about public companies, large incumbents, or pure funding recaps unless a new consumer startup is involved.',
+  'Whenever you surface a company, capture specific evidence snippets (quotes) from the email proving the insight.',
+  'Think like a skeptical investor: highlight why this company is noteworthy (launch, traction, funding, notable founder, etc.).',
+  'Return precise, concise data.'
+].join(' ');
 const LINK_BLOCKLIST = ['substack.com', 'substackmail.com', 'beehiiv.com', 'buttondown.email', 'gmail.com'];
 const OPENAI_INPUT_COST_PER_TOKEN_USD = 0.15 / 1_000_000;
 const OPENAI_OUTPUT_COST_PER_TOKEN_USD = 0.6 / 1_000_000;
@@ -76,170 +84,161 @@ export const startScan = action({
       throw error;
     }
 
-    const costCapUsd = RUN_COST_CAP_USD;
-    let totalCostUsd = 0;
-    let abortedByBudget = false;
-
     try {
-      const messages = await listNewsletterCandidates(accessToken, query, runId).catch(async (err) => {
-        await logRunError(ctx, runId, 'gmail_list_failed', formatErrorMessage(err), { query });
-        throw err;
-      });
-      console.log('scan:messages_listed', { runId, count: messages.length, query });
-      if (messages.length === 0) {
-        console.log('scan:no_candidates_found', { runId, userId, timeWindowDays, query });
-      }
-      await ctx.runMutation(internal.scan.internalUpdateRunTotals, { runId, totalMessages: messages.length });
-
       const retentionMs = settings.retentionDays * 24 * 60 * 60 * 1000;
       const retentionExpiry = Date.now() + retentionMs;
 
-      let processed = 0;
-      let classified = 0;
-      let companiesFound = 0;
-      let loggedUnknownPlatforms = 0;
-      const pushProgress = async () => {
-        await ctx.runMutation(internal.scan.internalUpdateRunProgress, {
-          runId,
-          processedMessages: processed,
-          newslettersClassified: classified,
-          processedCompanies: companiesFound,
-          costUsd: Number(totalCostUsd.toFixed(4))
-        });
-      };
-
-      for (const message of messages) {
-        processed += 1;
-
-        const meta = await fetchMessageMetadata(accessToken, message.id).catch(async (err) => {
-          await logRunError(ctx, runId, 'gmail_metadata_failed', formatErrorMessage(err), { gmailId: message.id });
-          await pushProgress();
-          return null;
-        });
-        if (!meta) {
-          console.warn('scan:metadata_missing', { runId, gmailId: message.id });
-          continue;
-        }
-
-        const platformGuess = classifyNewsletterFromMetadata({
-          from: meta.from,
-          listId: meta.listId ?? undefined,
-          subject: meta.subject ?? undefined
-        });
-
-        if (platformGuess === 'unknown' && loggedUnknownPlatforms < UNKNOWN_PLATFORM_LOG_LIMIT) {
-          console.log('scan:unknown_platform_headers', {
-            runId,
-            gmailId: message.id,
-            from: meta.from,
-            listId: meta.listId,
-            subject: (meta.subject ?? '').slice(0, 120)
-          });
-          loggedUnknownPlatforms += 1;
-        }
-
-        const fullMessage = await fetchFullMessage(accessToken, message.id).catch(async (err) => {
-          await logRunError(ctx, runId, 'gmail_body_failed', formatErrorMessage(err), { gmailId: message.id });
-          await pushProgress();
-          return null;
-        });
-        if (!fullMessage) {
-          console.warn('scan:body_missing', { runId, gmailId: message.id });
-          continue;
-        }
-
-        const normalized = normalizeMessageBody(fullMessage.payload);
-        const platform = refinePlatformWithBody(normalized.html ?? normalized.text ?? null, platformGuess);
-
-        if (platform === 'unknown') {
-          console.log('scan:skip_unknown_platform', { runId, gmailId: message.id });
-          await pushProgress();
-          continue;
-        }
-
-        const metaWithPlatform = { ...meta, platform };
-
-        const { emailId } = await ctx.runMutation(internal.scan.internalStoreEmailMetadata, {
-          runId,
-          gmailId: message.id,
-          threadId: message.threadId,
-          subject: meta.subject ?? '',
-          from: meta.from,
-          listId: meta.listId ?? undefined,
-          platform,
-          sentAt: meta.sentAt
-        });
-
-        await ctx.runMutation(internal.scan.internalStoreEmailBody, {
-          runId,
-          emailId,
-          normalizedHtml: normalized.html ?? undefined,
-          normalizedText: normalized.text ?? undefined,
-          links: normalized.links,
-          retentionExpiry
-        });
-
-        const extraction = await extractCompaniesForEmail(ctx, {
+      const result = await runScanPipeline(
+        {
           runId,
           userId,
-          emailId,
-          gmailId: message.id,
-          metadata: metaWithPlatform,
-          normalized,
-          platform
-        }).catch(async (err) => {
-          await logRunError(ctx, runId, 'openai_extraction_failed', formatErrorMessage(err), {
-            gmailId: message.id
-          });
-          await pushProgress();
-          return null;
-        });
-        if (!extraction) {
-          continue;
+          costCapUsd: RUN_COST_CAP_USD,
+          retentionExpiry,
+          unknownPlatformLogLimit: UNKNOWN_PLATFORM_LOG_LIMIT
+        },
+        {
+          listMessages: async () => {
+            const messages = await listNewsletterCandidates(accessToken, query, runId).catch(async (err) => {
+              await logRunError(ctx, runId, 'gmail_list_failed', formatErrorMessage(err), { query });
+              throw err;
+            });
+            if (messages.length === 0) {
+              console.log('scan:no_candidates_found', { runId, userId, timeWindowDays, query });
+            }
+            return messages;
+          },
+          fetchMetadata: async (gmailId: string) => {
+            const meta = await fetchMessageMetadata(accessToken, gmailId);
+            return { ...meta, gmailId };
+          },
+          fetchFullMessage: async (gmailId: string) => {
+            return await fetchFullMessage(accessToken, gmailId);
+          },
+          storeEmailMetadata: async (input) => {
+            return await ctx.runMutation(internal.scan.internalStoreEmailMetadata, {
+              runId,
+              gmailId: input.gmailId,
+              threadId: input.threadId,
+              subject: input.subject ?? '',
+              from: input.from,
+              listId: input.listId ?? undefined,
+              platform: input.platform,
+              sentAt: input.sentAt
+            });
+          },
+          storeEmailBody: async (input) => {
+            await ctx.runMutation(internal.scan.internalStoreEmailBody, {
+              runId,
+              emailId: input.emailId,
+              normalizedHtml: input.normalized.html ?? undefined,
+              normalizedText: input.normalized.text ?? undefined,
+              links: input.normalized.links,
+              retentionExpiry: input.retentionExpiry
+            });
+          },
+          extractCompanies: async (input) => {
+            try {
+              return await extractCompaniesForEmail(ctx, {
+                runId,
+                userId,
+                emailId: input.emailId,
+                gmailId: input.gmailId,
+                metadata: input.metadata,
+                normalized: input.normalized,
+                platform: input.platform
+              });
+            } catch (err) {
+              await logRunError(ctx, runId, 'openai_extraction_failed', formatErrorMessage(err), {
+                gmailId: input.gmailId
+              });
+              return null;
+            }
+          },
+          updateProgress: async ({ processedMessages, newslettersClassified, processedCompanies, costUsd }) => {
+            await ctx.runMutation(internal.scan.internalUpdateRunProgress, {
+              runId,
+              processedMessages,
+              newslettersClassified,
+              processedCompanies,
+              costUsd
+            });
+          },
+          markFailed: async (reason: string) => {
+            await ctx.runMutation(internal.scan.internalMarkRunFailed, { runId, reason });
+          },
+          completeRun: async ({ processedMessages, newslettersClassified, processedCompanies }) => {
+            await ctx.runMutation(internal.scan.internalCompleteRun, {
+              runId,
+              processedMessages,
+              newslettersClassified,
+              processedCompanies
+            });
+          },
+          setTotals: async (totalMessages: number) => {
+            await ctx.runMutation(internal.scan.internalUpdateRunTotals, { runId, totalMessages });
+          },
+          logError: async (code, message, context) => {
+            await logRunError(ctx, runId, code, message, context);
+          },
+          logInfo: async (_code, context) => {
+            console.log('scan:processing_unknown_platform', { runId, ...(context ?? {}) });
+          }
         }
-
-        companiesFound += extraction.created;
-        classified += 1;
-        totalCostUsd += extraction.costUsd;
-        await pushProgress();
-
-        if (totalCostUsd >= costCapUsd) {
-          abortedByBudget = true;
-          const spent = Number(totalCostUsd.toFixed(4));
-          const reason = `Scan aborted: estimated OpenAI spend $${spent.toFixed(2)} exceeded $${costCapUsd.toFixed(
-            2
-          )} limit`;
-          await logRunError(ctx, runId, 'cost_cap_exceeded', reason, { spentUsd: spent, capUsd: costCapUsd });
-          await ctx.runMutation(internal.scan.internalMarkRunFailed, { runId, reason });
-          break;
-        }
-      }
-
-      if (!abortedByBudget) {
-        await ctx.runMutation(internal.scan.internalCompleteRun, {
-          runId,
-          processedMessages: processed,
-          newslettersClassified: classified,
-          processedCompanies: companiesFound
-        });
-      }
+      );
 
       console.log('scan:complete', {
         runId,
-        processedMessages: processed,
-        newslettersClassified: classified,
-        processedCompanies: companiesFound,
-        totalCostUsd: Number(totalCostUsd.toFixed(4))
+        processedMessages: result.processedMessages,
+        newslettersClassified: result.newslettersClassified,
+        processedCompanies: result.processedCompanies,
+        totalCostUsd: Number(result.totalCostUsd.toFixed(4))
       });
       return { runId };
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'Unknown scan error';
       await logRunError(ctx, runId, 'scan_failed', reason);
-      if (!abortedByBudget) {
-        await ctx.runMutation(internal.scan.internalMarkRunFailed, { runId, reason });
-      }
+      await ctx.runMutation(internal.scan.internalMarkRunFailed, { runId, reason });
       throw error;
     }
+  }
+});
+
+export const enqueueScan = action({
+  args: {
+    userId: v.string(),
+    timeWindowDays: v.optional(v.number())
+  },
+  handler: async (ctx, args) => {
+    console.log('scan:enqueue', { userId: args.userId, timeWindowDays: args.timeWindowDays });
+    const user = (await ctx.runQuery(internal.auth.internalGetUser, { userId: args.userId })) as {
+      _id: { toString(): string };
+      settings: { timeWindowDays: number; retentionDays: number };
+    } | null;
+    if (!user) {
+      throw new Error('User not found for scan');
+    }
+
+    const settings = user.settings ?? defaultUserSettings();
+    const userId = user._id.toString();
+    const timeWindowDays = args.timeWindowDays ?? settings.timeWindowDays ?? 90;
+
+    const tokens = await ctx.runQuery(internal.auth.internalGetTokensForUser, { userId });
+    if (!tokens) {
+      throw new Error('No Google OAuth tokens available for user');
+    }
+
+    const tokenScopes = tokens.scopes ?? [];
+    assertRequiredScopes(tokenScopes, ['https://www.googleapis.com/auth/gmail.readonly']);
+
+    const runResponse = await ctx.runMutation(internal.scan.internalCreateRun, { userId, timeWindowDays });
+    const runId = runResponse.runId;
+
+    console.log('scan:enqueue_created_run', { userId, runId, timeWindowDays });
+    return {
+      runId,
+      timeWindowDays,
+      retentionDays: settings.retentionDays ?? defaultUserSettings().retentionDays
+    };
   }
 });
 

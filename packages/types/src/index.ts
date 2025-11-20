@@ -66,6 +66,13 @@ export interface CompanyRecord {
 
 export type ScanStatus = 'pending' | 'running' | 'complete' | 'failed';
 
+export interface RunLogEntry {
+  at: number;
+  code: string;
+  message?: string;
+  context?: string;
+}
+
 export interface ScanRun {
   id: string;
   userId: string;
@@ -75,6 +82,9 @@ export interface ScanRun {
   processedMessages: number;
   processedCompanies: number;
   newslettersClassified: number;
+  costUsd: number;
+  errorCount: number;
+  notes: RunLogEntry[];
   startedAt: number;
   updatedAt: number;
   completedAt?: number;
@@ -126,6 +136,10 @@ export interface ScanProgress {
   processedMessages: number;
   processedCompanies: number;
   newslettersClassified: number;
+  costUsd: number;
+  errorCount: number;
+  recentErrors: RunLogEntry[];
+  failureReason?: string;
   lastUpdatedAt: number;
 }
 

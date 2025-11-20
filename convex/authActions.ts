@@ -1,6 +1,7 @@
 'use node';
 
 import { action } from './_generated/server';
+import { internal } from './_generated/api';
 import { v } from 'convex/values';
 import {
   GOOGLE_REVOKE_ENDPOINT,
@@ -17,9 +18,8 @@ import { hashToken } from './hash';
 
 const REQUIRED_SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
-  'openid',
-  'email',
-  'profile'
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile'
 ];
 
 export const exchangeOAuthCode = action({
@@ -61,6 +61,9 @@ export const exchangeOAuthCode = action({
 
     const scopes = parseScopes(tokenPayload.scope ?? scopesFromEnv);
     assertRequiredScopes(scopes, REQUIRED_SCOPES);
+    if (!scopes.includes('openid')) {
+      console.warn('Google OAuth did not include openid scope; proceeding without it.');
+    }
 
     const accessToken = tokenPayload.access_token;
     const refreshToken = tokenPayload.refresh_token;
@@ -85,7 +88,7 @@ export const exchangeOAuthCode = action({
 
     const sessionToken = generateSessionToken();
 
-    const sessionSummary = await ctx.runMutation(internalStoreGoogleTokens as any, {
+    const sessionSummary = await ctx.runMutation(internal.auth.internalStoreGoogleTokens, {
       googleUserId: userInfo.sub,
       email: userInfo.email,
       accessTokenEnc: encryptSecret(accessToken, encryptionKey),
@@ -107,7 +110,7 @@ export const disconnectGoogle = action({
     userId: v.string()
   },
   handler: async (ctx, args) => {
-    const tokenDoc = await ctx.runQuery(internalGetTokensForUser as any, { userId: args.userId });
+    const tokenDoc = await ctx.runQuery(internal.auth.internalGetTokensForUser, { userId: args.userId });
     if (tokenDoc) {
       try {
         const encryptionKey = deriveAesKey(getRequiredEnvVar('TOKEN_ENCRYPTION_SECRET'));
@@ -131,7 +134,7 @@ export const disconnectGoogle = action({
       }
     }
 
-    await ctx.runMutation(internalRemoveTokens as any, { userId: args.userId });
-    await ctx.runMutation(internalClearSessions as any, { userId: args.userId });
+    await ctx.runMutation(internal.auth.internalRemoveTokens, { userId: args.userId });
+    await ctx.runMutation(internal.auth.internalClearSessions, { userId: args.userId });
   }
 });

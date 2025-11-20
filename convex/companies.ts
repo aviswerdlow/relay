@@ -26,7 +26,7 @@ export const internalUpsertCompany = internalMutation({
     oneLineSummary: v.string(),
     category: v.optional(v.string()),
     stage: v.optional(v.string()),
-    location: v.optional(v.string()),
+    location: v.optional(v.union(v.string(), v.null())),
     platform: v.optional(v.string()),
     keySignals: v.array(v.string()),
     snippets: v.array(
@@ -56,6 +56,7 @@ export const internalUpsertCompany = internalMutation({
     const mergedSnippets = mergeSnippets(existing?.snippets ?? [], args.snippets);
     const sourceEmailIds = uniqueStrings([...(existing?.sourceEmailIds ?? []), args.gmailId]);
     const altDomains = uniqueStrings([...(existing?.altDomains ?? []), ...args.altDomains]);
+    const resolvedLocation = args.location === undefined ? existing?.location ?? null : args.location;
 
     const firstSeenAt = existing ? Math.min(existing.firstSeenAt, args.sentAt) : args.sentAt;
     const lastSeenAt = Math.max(existing?.lastSeenAt ?? args.sentAt, args.sentAt);
@@ -72,7 +73,7 @@ export const internalUpsertCompany = internalMutation({
         oneLineSummary: selectSummary(existing.oneLineSummary, args.oneLineSummary),
         category: args.category ?? existing.category ?? DEFAULT_CATEGORY,
         stage: args.stage ?? existing.stage ?? DEFAULT_STAGE,
-        location: args.location ?? existing.location,
+        location: resolvedLocation,
         platform: args.platform ?? existing.platform,
         keySignals: mergedSignals,
         sourceEmailIds,
@@ -97,7 +98,7 @@ export const internalUpsertCompany = internalMutation({
       oneLineSummary: args.oneLineSummary,
       category: args.category ?? DEFAULT_CATEGORY,
       stage: args.stage ?? DEFAULT_STAGE,
-      location: args.location ?? undefined,
+      location: resolvedLocation,
       platform: args.platform ?? undefined,
       keySignals: mergedSignals,
       sourceEmailIds,

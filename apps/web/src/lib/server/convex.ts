@@ -53,6 +53,20 @@ export async function startScanViaConvex(userId: string, timeWindowDays?: number
 	return callAction<{ runId: string }>('scanActions:startScan', payload);
 }
 
+export async function enqueueScanViaConvex(
+	userId: string,
+	timeWindowDays?: number
+): Promise<{ runId: string; timeWindowDays: number; retentionDays: number }> {
+	const payload: Record<string, unknown> = { userId };
+	if (typeof timeWindowDays === 'number') {
+		payload.timeWindowDays = timeWindowDays;
+	}
+	return callAction<{ runId: string; timeWindowDays: number; retentionDays: number }>(
+		'scanActions:enqueueScan',
+		payload
+	);
+}
+
 export async function getScanProgressViaConvex(runId: string): Promise<ScanProgress> {
 	return callQuery<ScanProgress>('scan:getScanProgress', { runId });
 }

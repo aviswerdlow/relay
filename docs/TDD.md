@@ -1138,6 +1138,18 @@ async function doScan(ctx: any, userId: any, runId: any, days: number) {
 
 }
 
+### Scan budget & logging instrumentation (Issue #11)
+
+* `runs` now tracks `costUsd`, `errorCount`, and `notes` (array of `{ at, code, message?, context? }`). The helper `internalLogRunNote` trims the list to the latest 20 entries and increments `errorCount` on every log.
+* `scan:getScanProgress` exposes `costUsd`, `errorCount`, `recentErrors` (last five notes), and `failureReason` so `/scan` can show spend + error banners.
+* `scanActions:startScan` maintains `totalCostUsd` per run. Token usage comes from `json.usage`; if OpenAI does not return usage we approximate tokens from prompt/completion character counts before computing:
+  * `prompt_tokens * 0.15 / 1e6` for input
+  * `completion_tokens * 0.60 / 1e6` for output
+* The budget cap defaults to `$2` but honors `SCAN_COST_CAP_USD`. Hitting the cap logs `cost_cap_exceeded`, marks the run as `failed`, and surfaces a friendly message in the UI.
+* Gmail list/metadata/body failures, OpenAI errors, and link snapshot timeouts now call `internalLogRunNote` with `gmail_*`, `openai_extraction_failed`, or `link_snapshot_failed` codes so operators can see what went wrong without digging through logs.
+
+**Manual test**: set `SCAN_COST_CAP_USD=0.01`, run `pnpm dev:convex && pnpm dev`, kick off a scan, and wait for the `/scan` page to show a failed run with the cost banner plus at least one error entry. Repeat with a normal cap to confirm successful completion still leaves `recentErrors` empty.
+
 **convex/nlp.ts (LLM call)**
 
 import { action } from "./\_generated/server";
@@ -1815,4 +1827,3 @@ function bestSummary(a: string, b: string) {
 7. CSV export; daily purge cron.
 
 8. Tests (unit → integration → golden), instrumentation, small polish.
-

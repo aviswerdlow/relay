@@ -1,10 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import {
-	getScanProgressViaConvex,
-	listEmailsForRunViaConvex,
-	startScanViaConvex
-} from '$lib/server/convex';
+import { enqueueScanViaConvex, getScanProgressViaConvex, listEmailsForRunViaConvex } from '$lib/server/convex';
+import { getTemporalClient, getTemporalTaskQueue } from '$lib/server/temporal';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
 	if (!locals.session) {
@@ -19,9 +16,24 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	console.log('[api/scan] start requested', { userId, timeWindowDays });
 
 	try {
-		const { runId } = await startScanViaConvex(userId, timeWindowDays);
-		console.log('[api/scan] start succeeded', { userId, runId });
-		return json({ runId });
+		const { runId, timeWindowDays: scheduledWindow, retentionDays } = await enqueueScanViaConvex(
+			userId,
+			timeWindowDays
+		);
+
+		const client = await getTemporalClient();
+		const taskQueue = getTemporalTaskQueue();
+		const retentionMs = retentionDays * 24 * 60 * 60 * 1000;
+		const retentionExpiry = Date.now() + retentionMs;
+
+		const handle = await client.workflow.start('startScanWorkflow', {
+			args: [{ runId, userId, timeWindowDays: scheduledWindow, retentionExpiry }],
+			taskQueue,
+			workflowId: runId // correlate workflow to run
+		});
+
+		console.log('[api/scan] start succeeded', { userId, runId, workflowId: handle.workflowId });
+		return json({ runId, workflowId: handle.workflowId }, { status: 202 });
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.error('[api/scan] start failed', { userId, message });

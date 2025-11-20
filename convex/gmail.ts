@@ -29,7 +29,13 @@ export function buildNewsletterQuery(timeWindowDays: number): string {
   const senderFilters = ['substack.com', 'substackmail.com', 'beehiiv.com', 'buttondown.email']
     .map((domain) => `from:${domain}`)
     .join(' OR ');
-  return [`newer_than:${boundedDays}d`, '-is:chat', `(${senderFilters})`].join(' ');
+  return [
+    `newer_than:${boundedDays}d`,
+    'has:link',
+    'category:updates',
+    '-is:chat',
+    `(${senderFilters})`
+  ].join(' ');
 }
 
 export function classifyNewsletterFromMetadata(metadata: Pick<EmailMetadata, 'from' | 'listId' | 'subject'>): NewsletterPlatform {

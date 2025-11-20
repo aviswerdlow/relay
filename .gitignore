@@ -25,3 +25,4 @@ convex/_generated/
 .idea/
 .DS_Store
 .vercel
+.env*.local

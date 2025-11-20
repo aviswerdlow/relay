@@ -4,12 +4,23 @@
 
 	export let data: PageData;
 
+	type RunError = {
+		at: number;
+		code: string;
+		message?: string;
+		context?: string;
+	};
+
 	type Progress = {
 		status: string;
 		totalMessages: number;
 		processedMessages: number;
 		processedCompanies: number;
 		newslettersClassified: number;
+		costUsd: number;
+		errorCount: number;
+		recentErrors: RunError[];
+		failureReason?: string;
 		lastUpdatedAt: number;
 	};
 
@@ -18,6 +29,12 @@
 	let error: string | null = null;
 	let pollingHandle: ReturnType<typeof setTimeout> | null = null;
 	let isLoading = false;
+	const costFormatter = new Intl.NumberFormat('en-US', {
+		style: 'currency',
+		currency: 'USD',
+		minimumFractionDigits: 2,
+		maximumFractionDigits: 4
+	});
 
 	async function startScan() {
 		error = null;
@@ -82,6 +99,14 @@
 			clearTimeout(pollingHandle);
 		}
 	});
+
+	function formatCost(amount: number) {
+		return costFormatter.format(amount ?? 0);
+	}
+
+	function formatTime(timestamp: number) {
+		return new Date(timestamp).toLocaleTimeString();
+	}
 </script>
 
 <section class="scan">
@@ -109,14 +134,60 @@
 	{#if progress}
 		<section class="status">
 			<h2>Status: <span class="status-badge {progress.status}">{progress.status}</span></h2>
-			<ul>
-				<li>Total messages examined: {progress.totalMessages}</li>
-				<li>Messages processed: {progress.processedMessages}</li>
-				<li>Newsletters captured: {progress.newslettersClassified}</li>
+			{#if progress.status === 'failed' && progress.failureReason}
+				<p class="failure-reason">Failure reason: {progress.failureReason}</p>
+			{/if}
+			<ul class="metrics">
+				<li>
+					<span class="label">Queued newsletters</span>
+					<span class="value">{progress.totalMessages}</span>
+				</li>
+				<li>
+					<span class="label">Emails processed</span>
+					<span class="value">{progress.processedMessages}</span>
+				</li>
+				<li>
+					<span class="label">Newsletters classified</span>
+					<span class="value">{progress.newslettersClassified}</span>
+				</li>
+				<li>
+					<span class="label">Companies surfaced</span>
+					<span class="value">{progress.processedCompanies}</span>
+				</li>
+				<li>
+					<span class="label">OpenAI cost</span>
+					<span class="value">{formatCost(progress.costUsd)}</span>
+				</li>
+				<li>
+					<span class="label">Errors captured</span>
+					<span class="value">{progress.errorCount}</span>
+				</li>
 			</ul>
 			<p class="updated">
-				Last updated: {new Date(progress.lastUpdatedAt).toLocaleTimeString()}
+				Last updated: {formatTime(progress.lastUpdatedAt)}
 			</p>
+			{#if progress.recentErrors?.length}
+				<section class="logs">
+					<div class="logs-header">
+						<h3>Recent errors</h3>
+						<span class="error-count">{progress.errorCount} total</span>
+					</div>
+					<ul>
+						{#each progress.recentErrors as entry}
+							<li>
+								<div class="log-row">
+									<strong>{entry.code}</strong>
+									<small>{formatTime(entry.at)}</small>
+								</div>
+								<p>{entry.message ?? 'No additional details provided.'}</p>
+								{#if entry.context}
+									<pre>{entry.context}</pre>
+								{/if}
+							</li>
+						{/each}
+					</ul>
+				</section>
+			{/if}
 		</section>
 	{:else if runId}
 		<p class="status-text">Fetching progress…</p>
@@ -188,9 +259,37 @@
 	}
 
 	.status ul {
+		list-style: none;
 		margin: 0;
-		padding-left: 1.2rem;
-		line-height: 1.8;
+		padding: 0;
+	}
+
+	.metrics {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+		gap: 0.75rem;
+		margin-top: 1rem;
+	}
+
+	.metrics li {
+		background: rgba(15, 23, 42, 0.6);
+		padding: 0.75rem 1rem;
+		border-radius: 0.75rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.metrics .label {
+		text-transform: uppercase;
+		font-size: 0.7rem;
+		letter-spacing: 0.08em;
+		color: rgba(248, 250, 252, 0.6);
+	}
+
+	.metrics .value {
+		font-size: 1.1rem;
+		font-weight: 600;
 	}
 
 	.status-text {
@@ -224,5 +323,80 @@
 		font-size: 0.85rem;
 		color: rgba(248, 250, 252, 0.6);
 		margin-top: 1rem;
+	}
+
+	.failure-reason {
+		color: #fca5a5;
+		background: rgba(248, 113, 113, 0.12);
+		padding: 0.75rem 1rem;
+		border-radius: 0.75rem;
+	}
+
+	.logs {
+		margin-top: 1.5rem;
+		background: rgba(15, 23, 42, 0.6);
+		border-radius: 0.75rem;
+		padding: 1rem;
+	}
+
+	.logs-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 0.75rem;
+	}
+
+	.error-count {
+		font-size: 0.85rem;
+		color: rgba(248, 250, 252, 0.7);
+	}
+
+	.logs ul {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.logs li {
+		padding: 0.5rem 0;
+		border-top: 1px solid rgba(248, 250, 252, 0.08);
+	}
+
+	.logs li:first-child {
+		border-top: none;
+		padding-top: 0;
+	}
+
+	.log-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		font-size: 0.9rem;
+	}
+
+	.log-row strong {
+		color: #fbbf24;
+	}
+
+	.log-row small {
+		color: rgba(248, 250, 252, 0.6);
+	}
+
+	.logs p {
+		margin: 0.25rem 0 0;
+		color: rgba(248, 250, 252, 0.85);
+		font-size: 0.9rem;
+	}
+
+	.logs pre {
+		margin: 0.25rem 0 0;
+		padding: 0.4rem 0.5rem;
+		background: rgba(15, 23, 42, 0.9);
+		border-radius: 0.5rem;
+		font-size: 0.8rem;
+		overflow-x: auto;
 	}
 </style>
