@@ -1,9 +1,9 @@
 import type { SessionSummary, UserSettings } from '@relay/types';
-import { action, internalMutation, internalQuery, mutation, query } from './_generated/server';
+import { action, internalMutation, internalQuery, mutation, query } from './_generated/server.js';
 import { v } from 'convex/values';
 import type { GenericId } from 'convex/values';
-import { hashToken } from './hash';
-import { sanitizeRetentionDays, sanitizeTimeWindowDays } from './util';
+import { hashToken } from './hash.js';
+import { sanitizeRetentionDays, sanitizeTimeWindowDays } from './util.js';
 
 export const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 export const GOOGLE_USERINFO_ENDPOINT = 'https://openidconnect.googleapis.com/v1/userinfo';

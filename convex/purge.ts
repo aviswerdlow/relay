@@ -1,5 +1,5 @@
-import { internalMutation } from './_generated/server';
-import { isExpired } from './util';
+import { internalMutation } from './_generated/server.js';
+import { isExpired } from './util.js';
 
 export const purgeExpiredEmailBodies = internalMutation({
   args: {},

@@ -1,13 +1,13 @@
-import { runScanPipeline, type ScanPipelineDeps } from '../../../../convex/scanPipeline';
-import { buildNewsletterQuery } from '../../../../convex/gmail';
-import { normalizeMessageBody, type NormalizedMessage } from '../../../../convex/nlp';
-import { extractCompaniesSchema } from '../../../../convex/extractionSchema';
-import { fetchLinkMetadata } from '../../../../convex/linkFetcher';
-import { domainFromUrl } from '../../../../convex/companies';
-import { deriveAesKey, decryptSecret, encryptSecret } from '../../../../convex/crypto';
-import { requireEnv } from '../env';
-import { createConvexClient, callMutation, callQuery } from '../convexClient';
-import { getAccessToken } from '../convexToken';
+import { runScanPipeline, type ScanPipelineDeps } from '../../../../convex/scanPipeline.js';
+import { buildNewsletterQuery } from '../../../../convex/gmail.js';
+import { normalizeMessageBody, type NormalizedMessage } from '../../../../convex/nlp.js';
+import { extractCompaniesSchema } from '../../../../convex/extractionSchema.js';
+import { fetchLinkMetadata } from '../../../../convex/linkFetcher.js';
+import { domainFromUrl } from '../../../../convex/companies.js';
+import { deriveAesKey, decryptSecret, encryptSecret } from '../../../../convex/crypto.js';
+import { requireEnv } from '../env.js';
+import { createConvexClient, callMutation, callQuery } from '../convexClient.js';
+import { getAccessToken } from '../convexToken.js';
 
 const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me/messages';
 const MAX_MESSAGES = 200;

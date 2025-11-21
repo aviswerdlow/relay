@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { helloWorkflow } from './workflows/hello.workflow';
+import { helloWorkflow } from './workflows/hello.workflow.js';
 
 describe('helloWorkflow', () => {
   it('returns greeting via proxied activity stub', async () => {

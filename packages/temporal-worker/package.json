@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/worker.ts",
-    "build": "tsc --outDir dist",
-    "start": "node dist/worker.js",
+    "build": "tsc -p tsconfig.build.json && mkdir -p dist/convex && cp -R ../../convex/_generated dist/convex",
+    "start": "node dist/packages/temporal-worker/src/worker.js",
     "health": "tsx src/healthcheck.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

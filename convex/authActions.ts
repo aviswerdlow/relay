@@ -1,7 +1,7 @@
 'use node';
 
-import { action } from './_generated/server';
-import { internal } from './_generated/api';
+import { action } from './_generated/server.js';
+import { internal } from './_generated/api.js';
 import { v } from 'convex/values';
 import {
   GOOGLE_REVOKE_ENDPOINT,
@@ -11,10 +11,10 @@ import {
   internalGetTokensForUser,
   internalRemoveTokens,
   internalStoreGoogleTokens
-} from './auth';
-import { assertRequiredScopes, getRequiredEnvVar, parseScopes } from './util';
-import { deriveAesKey, encryptSecret, decryptSecret, generateSessionToken } from './crypto';
-import { hashToken } from './hash';
+} from './auth.js';
+import { assertRequiredScopes, getRequiredEnvVar, parseScopes } from './util.js';
+import { deriveAesKey, encryptSecret, decryptSecret, generateSessionToken } from './crypto.js';
+import { hashToken } from './hash.js';
 
 const REQUIRED_SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',

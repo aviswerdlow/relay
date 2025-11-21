@@ -1,6 +1,6 @@
 import type { NewsletterPlatform } from '@relay/types';
-import { classifyNewsletterFromMetadata, refinePlatformWithBody } from './gmail';
-import { normalizeMessageBody, type NormalizedMessage } from './nlp';
+import { classifyNewsletterFromMetadata, refinePlatformWithBody } from './gmail.js';
+import { normalizeMessageBody, type NormalizedMessage } from './nlp.js';
 
 export interface MessageCandidate {
   id: string;

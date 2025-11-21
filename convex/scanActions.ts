@@ -1,8 +1,8 @@
 'use node';
 
-import { action } from './_generated/server';
+import { action } from './_generated/server.js';
 import { v } from 'convex/values';
-import { GOOGLE_TOKEN_ENDPOINT, defaultUserSettings, internalGetTokensForUser, internalGetUser } from './auth';
+import { GOOGLE_TOKEN_ENDPOINT, defaultUserSettings, internalGetTokensForUser, internalGetUser } from './auth.js';
 import {
   internalCompleteRun,
   internalCreateRun,
@@ -11,15 +11,15 @@ import {
   internalStoreEmailMetadata,
   internalLogRunNote,
   internalUpdateRunTotals
-} from './scan';
-import { deriveAesKey, decryptSecret, encryptSecret } from './crypto';
-import { buildNewsletterQuery } from './gmail';
-import { assertRequiredScopes, getRequiredEnvVar } from './util';
-import { extractCompaniesSchema } from './extractionSchema';
-import { fetchLinkMetadata } from './linkFetcher';
-import { domainFromUrl, internalUpsertCompany, internalUpsertLinkMetadata } from './companies';
-import { internal } from './_generated/api';
-import { runScanPipeline } from './scanPipeline';
+} from './scan.js';
+import { deriveAesKey, decryptSecret, encryptSecret } from './crypto.js';
+import { buildNewsletterQuery } from './gmail.js';
+import { assertRequiredScopes, getRequiredEnvVar } from './util.js';
+import { extractCompaniesSchema } from './extractionSchema.js';
+import { fetchLinkMetadata } from './linkFetcher.js';
+import { domainFromUrl, internalUpsertCompany, internalUpsertLinkMetadata } from './companies.js';
+import { internal } from './_generated/api.js';
+import { runScanPipeline } from './scanPipeline.js';
 
 const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me/messages';
 const MAX_MESSAGES = 200;

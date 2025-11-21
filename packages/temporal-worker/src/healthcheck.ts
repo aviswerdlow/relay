@@ -1,6 +1,6 @@
 import { Connection } from '@temporalio/client';
 import { readFileSync } from 'node:fs';
-import { env } from './env';
+import { env } from './env.js';
 
 async function main() {
   const tls = buildTlsOptions();

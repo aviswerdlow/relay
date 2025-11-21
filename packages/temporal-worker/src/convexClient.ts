@@ -1,7 +1,7 @@
 import { ConvexHttpClient } from 'convex/browser';
-import { requireEnv } from './env';
-import { getAccessToken } from './convexToken';
-import type { Id } from './types';
+import { requireEnv } from './env.js';
+import { getAccessToken } from './convexToken.js';
+import type { Id } from './types.js';
 
 export function createConvexClient(): { convex: ConvexHttpClient } {
   const url = requireEnv('CONVEX_URL');

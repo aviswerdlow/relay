@@ -1,5 +1,5 @@
 import type { EmailBody, EmailMetadata, NewsletterPlatform, ScanProgress } from '@relay/types';
-import { internalMutation, internalQuery, query } from './_generated/server';
+import { internalMutation, internalQuery, query } from './_generated/server.js';
 import { v } from 'convex/values';
 
 const RUN_NOT_FOUND = 'Run not found';

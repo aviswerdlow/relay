@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "es2022",
+    "strict": false,
+    "noEmit": false
+  },
+  "include": [
+    "src",
+    "../../convex/scanPipeline.ts",
+    "../../convex/gmail.ts",
+    "../../convex/nlp.ts",
+    "../../convex/extractionSchema.ts",
+    "../../convex/linkFetcher.ts",
+    "../../convex/companies.ts",
+    "../../convex/crypto.ts",
+    "../../packages/types/src/**/*.ts"
+  ]
+}

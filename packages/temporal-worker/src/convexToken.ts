@@ -1,4 +1,4 @@
-import { requireEnv } from './env';
+import { requireEnv } from './env.js';
 
 // For now reuse deploy key as admin key; replace with auth service if needed.
 let cachedToken: string | null = null;

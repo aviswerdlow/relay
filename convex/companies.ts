@@ -1,5 +1,5 @@
 import type { CompanyDecision, CompanyRecord, CompanySignal } from '@relay/types';
-import { internalMutation, mutation, query } from './_generated/server';
+import { internalMutation, mutation, query } from './_generated/server.js';
 import { v } from 'convex/values';
 
 const SIGNAL_WEIGHTS: Record<string, number> = {

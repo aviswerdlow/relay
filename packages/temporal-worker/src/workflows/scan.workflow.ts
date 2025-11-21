@@ -1,5 +1,5 @@
 import { proxyActivities } from '@temporalio/workflow';
-import type { NormalizedMessage } from '../../../../convex/nlp';
+import type { NormalizedMessage } from '../../../../convex/nlp.js';
 import type { NewsletterPlatform } from '@relay/types';
 
 const { scanEmail } = proxyActivities<{
