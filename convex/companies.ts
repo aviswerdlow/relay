@@ -56,7 +56,7 @@ export const internalUpsertCompany = internalMutation({
     const mergedSnippets = mergeSnippets(existing?.snippets ?? [], args.snippets);
     const sourceEmailIds = uniqueStrings([...(existing?.sourceEmailIds ?? []), args.gmailId]);
     const altDomains = uniqueStrings([...(existing?.altDomains ?? []), ...args.altDomains]);
-    const resolvedLocation = args.location === undefined ? existing?.location ?? null : args.location;
+    const resolvedLocation = sanitizeLocation(args.location ?? existing?.location ?? undefined);
 
     const firstSeenAt = existing ? Math.min(existing.firstSeenAt, args.sentAt) : args.sentAt;
     const lastSeenAt = Math.max(existing?.lastSeenAt ?? args.sentAt, args.sentAt);
@@ -73,7 +73,7 @@ export const internalUpsertCompany = internalMutation({
         oneLineSummary: selectSummary(existing.oneLineSummary, args.oneLineSummary),
         category: args.category ?? existing.category ?? DEFAULT_CATEGORY,
         stage: args.stage ?? existing.stage ?? DEFAULT_STAGE,
-        location: resolvedLocation,
+        location: resolvedLocation ?? existing.location,
         platform: args.platform ?? existing.platform,
         keySignals: mergedSignals,
         sourceEmailIds,
@@ -221,6 +221,12 @@ export function normalizeName(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9 ]+/g, '').replace(/\s+/g, ' ').trim();
 }
 
+function sanitizeLocation(value?: string | null): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 export function domainFromUrl(url?: string | null): string {
   if (!url) return '';
   try {
@@ -305,15 +311,19 @@ async function findExistingCompany(ctx: any, userId: any, normalizedName: string
     const byDomain = await ctx.db
       .query('companies')
       .withIndex('by_domain', (q: any) => q.eq('userId', userId).eq('canonicalDomain', canonicalDomain))
-      .unique();
-    if (byDomain) return byDomain;
+      .take(2);
+    if (byDomain.length > 0) {
+      return byDomain[0];
+    }
   }
 
   const byName = await ctx.db
     .query('companies')
     .withIndex('by_normalized_name', (q: any) => q.eq('userId', userId).eq('normalizedName', normalizedName))
-    .unique();
-  if (byName) return byName;
+    .take(2);
+  if (byName.length > 0) {
+    return byName[0];
+  }
 
   const candidates = await ctx.db
     .query('companies')

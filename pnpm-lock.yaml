@@ -73,6 +73,9 @@ importers:
 
   packages/temporal-worker:
     dependencies:
+      '@temporalio/activity':
+        specifier: ^1.12.0
+        version: 1.13.2
       '@temporalio/client':
         specifier: ^1.12.0
         version: 1.13.2

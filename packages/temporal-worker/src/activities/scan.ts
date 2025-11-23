@@ -1,3 +1,4 @@
+import { Context } from '@temporalio/activity';
 import { runScanPipeline, type ScanPipelineDeps } from '../../../../convex/scanPipeline.js';
 import { buildNewsletterQuery } from '../../../../convex/gmail.js';
 import { normalizeMessageBody, type NormalizedMessage } from '../../../../convex/nlp.js';
@@ -11,14 +12,16 @@ import { getAccessToken } from '../convexToken.js';
 
 const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me/messages';
 const MAX_MESSAGES = 200;
-const MAX_LINK_SNAPSHOTS = 2;
+const MAX_LINK_SNAPSHOTS = 3;
 const OPENAI_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_MODEL = process.env.OPENAI_MODEL ?? 'gpt-4o-mini-2024-07-18';
 const SYSTEM_PROMPT = [
   'You are an obsessive consumer venture capitalist combing through newsletters.',
   'Read the ENTIRE email carefully (headers, intros, body, footers) and extract every NEW CONSUMER COMPANY worth investigating.',
-  'Do not hallucinate. If no new startup is mentioned, return an empty list.',
+  'Prefer recall: if a company might be relevant but you are not fully sure, include it with LOW confidence (0.2–0.4) and still cite evidence.',
+  'Do not fabricate details; every company you return must be explicitly mentioned in the email.',
   'Focus on consumer products/services (b2c, creator tools, social, marketplaces, commerce, consumer AI, etc.).',
+  'Sponsored blurbs count if they describe a consumer product—extract them with lower confidence.',
   'Ignore press about public companies, large incumbents, or pure funding recaps unless a new consumer startup is involved.',
   'Whenever you surface a company, capture specific evidence snippets (quotes) from the email proving the insight.',
   'Think like a skeptical investor: highlight why this company is noteworthy (launch, traction, funding, notable founder, etc.).',
@@ -28,6 +31,7 @@ const LINK_BLOCKLIST = ['substack.com', 'substackmail.com', 'beehiiv.com', 'butt
 const OPENAI_INPUT_COST_PER_TOKEN_USD = 0.15 / 1_000_000;
 const OPENAI_OUTPUT_COST_PER_TOKEN_USD = 0.6 / 1_000_000;
 const ACCESS_TOKEN_REFRESH_BUFFER_MS = 60 * 1000;
+const HEARTBEAT_EVERY_MESSAGES = 1;
 
 export async function scanEmail(input: {
   runId: string;
@@ -67,12 +71,23 @@ export async function scanEmail(input: {
   const query = buildNewsletterQuery(timeWindowDays);
   const retentionMs = (user?.settings?.retentionDays ?? 30) * 24 * 60 * 60 * 1000;
   const retentionExpiry = input.retentionExpiry ?? Date.now() + retentionMs;
+  const heartbeat = createHeartbeat();
 
   const deps: ScanPipelineDeps = {
-    listMessages: async () => listNewsletterCandidates(accessToken, query, input.runId),
-    fetchMetadata: async (gmailId) => fetchMessageMetadata(accessToken, gmailId),
-    fetchFullMessage: async (gmailId) => fetchFullMessage(accessToken, gmailId),
+    listMessages: async () => {
+      heartbeat();
+      return await listNewsletterCandidates(accessToken, query, input.runId, heartbeat);
+    },
+    fetchMetadata: async (gmailId) => {
+      heartbeat();
+      return await fetchMessageMetadata(accessToken, gmailId);
+    },
+    fetchFullMessage: async (gmailId) => {
+      heartbeat();
+      return await fetchFullMessage(accessToken, gmailId);
+    },
     storeEmailMetadata: async (payload) => {
+      heartbeat();
       return await callMutation(convex, 'scan:internalStoreEmailMetadata', {
         runId: input.runId,
         gmailId: payload.gmailId,
@@ -85,6 +100,7 @@ export async function scanEmail(input: {
       });
     },
     storeEmailBody: async (payload) => {
+      heartbeat();
       return await callMutation(convex, 'scan:internalStoreEmailBody', {
         runId: input.runId,
         emailId: payload.emailId,
@@ -95,9 +111,11 @@ export async function scanEmail(input: {
       });
     },
     extractCompanies: async (payload) => {
-      return await extractCompaniesForEmail(convex, input.runId, input.userId, payload);
+      heartbeat();
+      return await extractCompaniesForEmail(convex, input.runId, input.userId, payload, heartbeat);
     },
     updateProgress: async ({ processedMessages, newslettersClassified, processedCompanies, costUsd }) => {
+      heartbeat();
       await callMutation(convex, 'scan:internalUpdateRunProgress', {
         runId: input.runId,
         processedMessages,
@@ -107,9 +125,11 @@ export async function scanEmail(input: {
       });
     },
     markFailed: async (reason: string) => {
+      heartbeat();
       await callMutation(convex, 'scan:internalMarkRunFailed', { runId: input.runId, reason });
     },
     completeRun: async ({ processedMessages, newslettersClassified, processedCompanies }) => {
+      heartbeat();
       await callMutation(convex, 'scan:internalCompleteRun', {
         runId: input.runId,
         processedMessages,
@@ -118,6 +138,7 @@ export async function scanEmail(input: {
       });
     },
     setTotals: async (totalMessages: number) => {
+      heartbeat();
       await callMutation(convex, 'scan:internalUpdateRunTotals', { runId: input.runId, totalMessages });
     },
     logError: async (code, message, context) => {
@@ -143,6 +164,20 @@ export async function scanEmail(input: {
     },
     deps
   );
+}
+
+function createHeartbeat() {
+  let counter = 0;
+  return () => {
+    counter += 1;
+    if (counter % HEARTBEAT_EVERY_MESSAGES === 0) {
+      try {
+        Context.current().heartbeat();
+      } catch {
+        // Ignore heartbeat errors to avoid interrupting work.
+      }
+    }
+  };
 }
 
 async function ensureFreshAccessToken(
@@ -202,11 +237,40 @@ async function refreshGoogleAccessToken(refreshToken: string): Promise<{ accessT
   };
 }
 
-async function listNewsletterCandidates(accessToken: string, query: string, runId: string) {
+async function listNewsletterCandidates(accessToken: string, query: string, runId: string, heartbeat: () => void) {
+  const attempts = [
+    { label: 'primary', query },
+    {
+      label: 'no-category',
+      query: stripToken(query, 'category:updates')
+    },
+    {
+      label: 'no-category-no-link',
+      query: stripToken(stripToken(query, 'category:updates'), 'has:link')
+    }
+  ];
+
+  for (const attempt of attempts) {
+    heartbeat();
+    const messages = await fetchNewsletterCandidates(accessToken, attempt.query, heartbeat);
+    console.info(`scan ${runId}: ${attempt.label} Gmail query returned ${messages.length} messages`, {
+      query: attempt.query
+    });
+    if (messages.length > 0) {
+      return messages.slice(0, MAX_MESSAGES);
+    }
+  }
+
+  // All attempts were empty; return empty to allow upstream to fail fast.
+  return [];
+}
+
+async function fetchNewsletterCandidates(accessToken: string, query: string, heartbeat: () => void) {
   const messages: { id: string; threadId: string }[] = [];
   let pageToken: string | undefined;
 
   while (messages.length < MAX_MESSAGES) {
+    heartbeat();
     const params = new URLSearchParams({
       q: query,
       maxResults: '100',
@@ -244,11 +308,13 @@ async function listNewsletterCandidates(accessToken: string, query: string, runI
   return messages.slice(0, MAX_MESSAGES);
 }
 
+function stripToken(query: string, token: string): string {
+  return query.replace(new RegExp(`\\s*${token}\\s*`, 'g'), ' ').replace(/\s+/g, ' ').trim();
+}
+
 async function fetchMessageMetadata(accessToken: string, id: string) {
-  const params = new URLSearchParams({
-    format: 'metadata',
-    metadataHeaders: ['From', 'Subject', 'List-Id', 'Date'].join(',')
-  });
+  const params = new URLSearchParams({ format: 'metadata' });
+  ['From', 'Subject', 'List-Id', 'Date'].forEach((header) => params.append('metadataHeaders', header));
 
   const response = await fetch(`${GMAIL_API_BASE}/${id}?${params.toString()}`, {
     headers: {
@@ -303,7 +369,8 @@ async function extractCompaniesForEmail(
     };
     normalized: NormalizedMessage;
     platform?: string;
-  }
+  },
+  heartbeat: () => void
 ): Promise<{ created: number; costUsd: number }> {
   const text = context.normalized.text ?? context.normalized.html;
   if (!text) {
@@ -313,6 +380,7 @@ async function extractCompaniesForEmail(
   const linkCandidates = selectLinkCandidates(context.normalized.links);
   const snapshots: Array<{ url: string; title: string | null; description: string | null; canonicalUrl?: string | null; socialLinks?: string[] }> = [];
   for (const candidate of linkCandidates) {
+    heartbeat();
     try {
       const metadata = await fetchLinkMetadata(candidate);
       snapshots.push(metadata);
@@ -336,7 +404,13 @@ async function extractCompaniesForEmail(
     if (snapshots.length >= MAX_LINK_SNAPSHOTS) break;
   }
 
-  const userPrompt = buildUserPrompt(context.gmailId, text, snapshots);
+  const userPrompt = buildUserPrompt({
+    messageId: context.gmailId,
+    subject: context.metadata.subject,
+    from: context.metadata.from,
+    normalizedText: text,
+    links: snapshots
+  });
   const payload = {
     model: OPENAI_MODEL,
     temperature: 0.1,
@@ -351,6 +425,7 @@ async function extractCompaniesForEmail(
     tool_choice: { type: 'function', function: { name: 'extract_companies' } }
   };
 
+  heartbeat();
   const response = await fetch(OPENAI_ENDPOINT, {
     method: 'POST',
     headers: {
@@ -360,7 +435,17 @@ async function extractCompaniesForEmail(
     body: JSON.stringify(payload)
   });
 
+  const startedAt = Date.now();
+
   if (!response.ok) {
+    const errorBody = await response.text();
+    console.error(`OpenAI extraction failed (${response.status})`, {
+      status: response.status,
+      runId,
+      gmailId: context.gmailId,
+      elapsedMs: Date.now() - startedAt,
+      bodyPreview: errorBody.slice(0, 500)
+    });
     throw new Error(`OpenAI extraction failed (${response.status})`);
   }
 
@@ -372,6 +457,22 @@ async function extractCompaniesForEmail(
   const estimatedCost = estimateOpenAiCostUsd(json.usage ?? null, {
     promptChars: SYSTEM_PROMPT.length + userPrompt.length,
     completionChars: rawArguments.length
+  });
+  const companyNames = companies
+    .map((c: any) => (typeof c?.name === 'string' ? c.name.trim() : ''))
+    .filter((name: string) => name.length > 0);
+  console.info(`OpenAI extraction complete`, {
+    runId,
+    gmailId: context.gmailId,
+    subject: context.metadata.subject,
+    from: context.metadata.from,
+    model: OPENAI_MODEL,
+    promptTokens: json.usage?.prompt_tokens ?? null,
+    completionTokens: json.usage?.completion_tokens ?? null,
+    companyCount: companies.length,
+    firstCompany: companyNames[0] ?? null,
+    costUsd: Number(estimatedCost.toFixed(6)),
+    elapsedMs: Date.now() - startedAt
   });
 
   let created = 0;
@@ -408,7 +509,7 @@ async function extractCompaniesForEmail(
       oneLineSummary: summary,
       category: company.category,
       stage: company.stage,
-      location: company.location ?? null,
+      location: sanitizeLocation(company.location),
       keySignals,
       snippets,
       platform: context.platform,
@@ -424,17 +525,28 @@ async function extractCompaniesForEmail(
   return { created, costUsd: estimatedCost };
 }
 
-function buildUserPrompt(messageId: string, normalizedText: string, links: Array<{ url: string; title: string | null; description: string | null }>) {
-  const snapshots = links
+function buildUserPrompt(input: {
+  messageId: string;
+  subject: string;
+  from: string;
+  normalizedText: string;
+  links: Array<{ url: string; title: string | null; description: string | null }>;
+}) {
+  const snapshots = input.links
     .map((link) => {
       const meta = [link.title, link.description].filter(Boolean).join(' — ');
       return `URL: ${link.url}\nTITLE: ${link.title ?? 'Unknown'}\nMETA: ${meta || 'None'}`;
     })
     .join('\n\n');
 
-  return `NEWSLETTER_EMAIL_ID: ${messageId}
+  const subject = input.subject?.trim() || 'Unknown';
+  const from = input.from?.trim() || 'Unknown';
+
+  return `NEWSLETTER_EMAIL_ID: ${input.messageId}
+NEWSLETTER_SUBJECT: ${subject}
+NEWSLETTER_FROM: ${from}
 NEWSLETTER_TEXT (normalized):
-${normalizedText.slice(0, 12000)}
+${input.normalizedText.slice(0, 12000)}
 
 LINK SNAPSHOTS:
 ${snapshots || 'None'}
@@ -473,6 +585,12 @@ function sanitizeUrl(url?: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function sanitizeLocation(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function clamp(value: number, min: number, max: number) {

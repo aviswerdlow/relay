@@ -25,8 +25,8 @@ const BODY_CONFIRMATIONS: Record<Exclude<NewsletterPlatform, 'unknown'>, RegExp[
 
 export function buildNewsletterQuery(timeWindowDays: number): string {
   const boundedDays = Math.max(1, Math.min(365, Math.floor(timeWindowDays)));
-  // Keep scope narrow but do not require links to maximize coverage.
-  const senderFilters = ['substack.com', 'substackmail.com', 'beehiiv.com', 'buttondown.email']
+  // Match any sender containing the target domains (including subdomains).
+  const senderFilters = ['@substack.com', 'substack.com', 'substackmail.com', 'beehiiv.com', 'buttondown.email']
     .map((domain) => `from:${domain}`)
     .join(' OR ');
   return [

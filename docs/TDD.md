@@ -1414,7 +1414,7 @@ Web: poll scan:progress(runId) until finished
 
 * **gmail.queryBuilder.spec.ts**
 
-  * buildGmailQuery(90) includes newer\_than:90d, has:link, excludes \-is:chat.
+  * buildGmailQuery(90) includes newer\_than:90d, has:link, excludes \-is:chat, and sender filters for @substack.com/substack.com/substackmail.com/beehiiv.com/buttondown.email.
 
 * **gmail.classifier.spec.ts**
 

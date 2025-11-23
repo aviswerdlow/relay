@@ -18,6 +18,15 @@ describe('buildNewsletterQuery', () => {
     expect(buildNewsletterQuery(0)).toContain('newer_than:1d');
     expect(buildNewsletterQuery(999)).toContain('newer_than:365d');
   });
+
+  it('includes newsletter sender filters', () => {
+    const query = buildNewsletterQuery(14);
+    expect(query).toContain('from:@substack.com');
+    expect(query).toContain('from:substack.com');
+    expect(query).toContain('from:substackmail.com');
+    expect(query).toContain('from:beehiiv.com');
+    expect(query).toContain('from:buttondown.email');
+  });
 });
 
 describe('classifyNewsletterFromMetadata', () => {
